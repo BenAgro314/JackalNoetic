@@ -8,14 +8,15 @@ from ros_numpy import point_cloud2 as pc2
 import numpy as np
 from sensor_msgs.msg import PointCloud2, PointField
 
-class LidarListener:
+class Classifier:
 
-	def __init__(self, topic):
-		rospy.init_node('lidar_listener', anonymous = True)
-		rospy.Subscriber(topic, PointCloud2, self.LidarCallback)
+	def __init__(self, in_topic, out_topic):
+		self.pub = rospy.Publisher(out_topic, PointCloud2, queue_size=10)
+		rospy.init_node('classifier', anonymous = True)
+		rospy.Subscriber(in_topic, PointCloud2, self.LidarCallback)
 		rospy.spin()
 
-	def network_inference_dummy(self, points):
+	def NetworkInterfaceDummy(self, points):
 		"""
 		Function simulating a network inference.
 		:param points: The input list of points as a numpy array (type float32, size [N,3])
@@ -26,7 +27,7 @@ class LidarListener:
 		# Init #
 		########    
 		
-		# Set which gpu is going to be used o nthe machine
+		# Set which gpu is going to be used on the machine
 		GPU_ID = '1'    
 		# Set this GPU as the only one visible by this python script
 		os.environ['CUDA_VISIBLE_DEVICES'] = GPU_ID  
@@ -52,23 +53,40 @@ class LidarListener:
 		##########
 		# Output #
 		##########    
+
 		# Convert from pytorch cuda tensor to a simple numpy array
 		predictions = predictions.detach().cpu().numpy()    
 		return predictions
 
-	def LidarCallback(self, cloud):
-		#rospy.loginfo("received pointcloud " + str(type(cloud)))
-		points = pc2.pointcloud2_to_array(cloud)
-		points= pc2.get_xyz_points(points)
-		# points[:,0]=pc['x']
-		# points[:,1]=pc['y']
-		# points[:,2]=pc['z']
 
-		rospy.loginfo("points shape: " + str(np.shape(points)))
+
+	def LidarCallback(self, cloud):
+		rospy.loginfo("Received Point Cloud")
+
+		# turn pointcloud into numpy record array
+		labeled_points = pc2.pointcloud2_to_array(cloud) 
+		labeled_points = labeled_points.copy()
+	
+		
+		# turn the record array into an [N,3] sized numpy array of floats 
+		xyz_points= pc2.get_xyz_points(labeled_points)
 		
 		
-		predictions = self.network_inference_dummy(points)
-		rospy.loginfo("predictions shape: " + str(np.shape(predictions)))
+		# generate prediction, returns [N,1] of classes 
+		predictions = self.NetworkInterfaceDummy(xyz_points)
+		
+		#add class to labeled points (replacing intensity)
+		labeled_points = labeled_points.copy()
+		new_dtype = np.dtype({'names':['x','y','z','class','ring'], 'formats':['<f4','<f4','<f4',np.int32,'<u2'],'offsets':[0,4,8,16,20], 'itemsize':32})
+		labeled_points.dtype = new_dtype
+		labeled_points['class'] = predictions
+		
+		# generate new pointcloud message with classes 
+		msg = pc2.array_to_pointcloud2(labeled_points, rospy.Time.now(), cloud.header.frame_id)
+		self.pub.publish(msg)
+		
+		rospy.loginfo("Sent Pointcloud")
+		
 
 if __name__ == '__main__':
-	L = LidarListener("/velodyne_points")
+	L = Classifier("/velodyne_points", "/classified_points")
