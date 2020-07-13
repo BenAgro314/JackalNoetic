@@ -77,7 +77,7 @@ class Classifier:
 		
 		#add class to labeled points (replacing intensity)
 		labeled_points = labeled_points.copy()
-		new_dtype = np.dtype({'names':['x','y','z','class','ring'], 'formats':['<f4','<f4','<f4',np.int32,'<u2'],'offsets':[0,4,8,16,20], 'itemsize':32})
+		new_dtype = np.dtype({'names':['x','y','z','intensity','ring'], 'formats':['<f4','<f4','<f4','<f4','<u2'],'offsets':[0,4,8,16,20], 'itemsize':32})
 		labeled_points.dtype = new_dtype
 		labeled_points['class'] = predictions
 		
