@@ -13,10 +13,10 @@ class Classifier:
 	def __init__(self, in_topic, out_topic):
 		self.pub = rospy.Publisher(out_topic, PointCloud2, queue_size=10)
 		rospy.init_node('classifier', anonymous = True)
-		rospy.Subscriber(in_topic, PointCloud2, self.LidarCallback)
+		rospy.Subscriber(in_topic, PointCloud2, self.lidar_callback)
 		rospy.spin()
 
-	def NetworkInterfaceDummy(self, points):
+	def network_inference(self, points):
 		"""
 		Function simulating a network inference.
 		:param points: The input list of points as a numpy array (type float32, size [N,3])
@@ -60,7 +60,7 @@ class Classifier:
 
 
 
-	def LidarCallback(self, cloud):
+	def lidar_callback(self, cloud):
 		rospy.loginfo("Received Point Cloud")
 
 		# turn pointcloud into numpy record array
@@ -73,7 +73,7 @@ class Classifier:
 		
 		
 		# generate prediction, returns [N,1] of classes 
-		predictions = self.NetworkInterfaceDummy(xyz_points)
+		predictions = self.network_inference(xyz_points)
 		
 		#add class to labeled points (replacing intensity)
 		labeled_points = labeled_points.copy()
