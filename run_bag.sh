@@ -1,10 +1,10 @@
 #!/bin/bash
 
-killall roscore
-killall rosmaster
-killall gzclient
-killall gzserver
-killall rviz
+pkill roscore
+pkill rosmaster
+pkill gzclient
+pkill gzserver
+pkill rviz
 
 LOADWORLD=""
 RATE=1

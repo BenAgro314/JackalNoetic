@@ -1,6 +1,5 @@
 <launch>
 
-	<node name="talker" pkg="classifier" type="talker.py"/>
-	<node name="classifier" pkg="classifier" type="classifier.py"/>
+	<node name="classifier" pkg="classifier" type="classifier.py" output = 'screen'/>
 
 </launch>

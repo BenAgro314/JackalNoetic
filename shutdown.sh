@@ -1,8 +1,8 @@
 #!/bin/bash
+
+rosnode kill -a
 pkill roscore
-pkill rosmaster
 pkill gzclient
 pkill gzserver
+pkill rosmaster
 pkill rviz
-
-roslaunch classifier classifier.launch

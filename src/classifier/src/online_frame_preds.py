@@ -46,6 +46,10 @@ import rospy
 import ros_numpy
 from ros_numpy import point_cloud2 as pc2
 from sensor_msgs.msg import PointCloud2, PointField
+# for pausing gazebo during computation:
+from std_srvs.srv import Empty
+
+PAUSE_SIM = True
 
 # ----------------------------------------------------------------------------------------------------------------------
 #
@@ -605,6 +609,9 @@ class OnlineTester:
     def lidar_callback(self, cloud):
 
         rospy.loginfo("Received Point Cloud")
+        
+        if (PAUSE_SIM):
+            pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
 
         # convert PointCloud2 message to structured numpy array 
         labeled_points = pc2.pointcloud2_to_array(cloud) 
@@ -619,16 +626,19 @@ class OnlineTester:
         output_dtype = np.dtype({'names':['x','y','z','intensity','ring'], 'formats':['<f4','<f4','<f4','<f4','<u2'],'offsets':[0,4,8,16,20], 'itemsize':32})
 
         # fill structured numpy array with points and classes (in the intensity field). Fill ring with zeros to maintain Pointcloud2 structure
-        new_points = np.c[new_points, predictions, np.zeros(len(predictions))]
+        new_points = np.c_[new_points, predictions, np.zeros(len(predictions))]
 
         new_points = np.core.records.fromarrays(new_points.transpose(), output_dtype)
         
         # convert to Pointcloud2 message and publish 
         msg = pc2.array_to_pointcloud2(new_points, rospy.Time.now(), cloud.header.frame_id)
         
-		self.pub.publish(msg)
-		
-		rospy.loginfo("Sent Pointcloud")
+        self.pub.publish(msg)
+        
+        rospy.loginfo("Sent Pointcloud")
+
+        if (PAUSE_SIM):
+            unpause = rospy.ServiceProxy('/gazebo/unpause_physics', Empty)
 
 
 # ----------------------------------------------------------------------------------------------------------------------

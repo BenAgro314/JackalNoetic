@@ -13,12 +13,13 @@ find_package(catkin REQUIRED COMPONENTS
   sensor_msgs
   std_msgs
   ros_numpy
+  std_srvs
 )
 
 catkin_package(
    INCLUDE_DIRS include
    LIBRARIES classifier
-   CATKIN_DEPENDS roscpp rospy sensor_msgs std_msgs ros_numpy
+   CATKIN_DEPENDS roscpp rospy sensor_msgs std_msgs ros_numpy std_srvs
    DEPENDS system_lib
 )
 
