@@ -10,4 +10,4 @@ roscore -p $ROSPORT&
 
 until rostopic list; do sleep 0.5; done #wait until rosmaster has started 
 
-roslaunch dummy_classifier test.launch
+roslaunch classifier test.launch

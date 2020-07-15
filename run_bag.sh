@@ -27,4 +27,4 @@ until rostopic list; do sleep 0.5; done #wait until rosmaster has started
 rosparam set use_sim_time true
 
 rosbag play -l -q -r $RATE $BAGPATH &
-roslaunch dummy_classifier classifier.launch
+roslaunch classifier classifier.launch
