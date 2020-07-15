@@ -58,8 +58,6 @@ class Classifier:
 		predictions = predictions.detach().cpu().numpy()    
 		return predictions
 
-
-
 	def lidar_callback(self, cloud):
 		rospy.loginfo("Received Point Cloud")
 
