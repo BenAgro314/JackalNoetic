@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.0.2)
-project(dummy_classifier)
+project(classifier)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
 add_compile_options(-std=c++14)
@@ -13,18 +13,20 @@ find_package(catkin REQUIRED COMPONENTS
   sensor_msgs
   std_msgs
   ros_numpy
+  std_srvs
 )
 
 catkin_package(
    INCLUDE_DIRS include
-   LIBRARIES dummy_classifier
-   CATKIN_DEPENDS roscpp rospy sensor_msgs std_msgs ros_numpy
+   LIBRARIES classifier
+   CATKIN_DEPENDS roscpp rospy sensor_msgs std_msgs ros_numpy std_srvs
    DEPENDS system_lib
 )
 
 catkin_install_python(PROGRAMS
        	src/talker.py
 	    src/classifier.py
+        src/online_frame_preds.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 

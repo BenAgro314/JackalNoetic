@@ -1,0 +1,6 @@
+<launch>
+
+    
+	<node name="classifier" pkg="classifier" type="classifier.py" output="screen"/>
+
+</launch>

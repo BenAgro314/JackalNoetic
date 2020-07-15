@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 #
 #
 #      0=================================0
@@ -38,6 +40,16 @@ from kernels.kernel_points import create_3D_rotations
 # Subsampling extension
 import cpp_wrappers.cpp_subsampling.grid_subsampling as cpp_subsampling
 import cpp_wrappers.cpp_neighbors.radius_neighbors as cpp_neighbors
+
+# ROS
+import rospy
+import ros_numpy
+from ros_numpy import point_cloud2 as pc2
+from sensor_msgs.msg import PointCloud2, PointField
+# for pausing gazebo during computation:
+from std_srvs.srv import Empty
+
+PAUSE_SIM = True
 
 # ----------------------------------------------------------------------------------------------------------------------
 #
@@ -525,9 +537,9 @@ class OnlineTester:
         # Init ROS #
         ############
 
-        # self.pub = rospy.Publisher(out_topic, PointCloud2, queue_size=10)
-        # rospy.init_node('classifier', anonymous=True)
-        # rospy.Subscriber(in_topic, PointCloud2, self.LidarCallback)
+        self.pub = rospy.Publisher(out_topic, PointCloud2, queue_size=10)
+        rospy.init_node('classifier', anonymous=True)
+        rospy.Subscriber(in_topic, PointCloud2, self.lidar_callback)
         # rospy.spin()
 
     def network_inference(self, points):
@@ -594,6 +606,40 @@ class OnlineTester:
 
         return predictions, batch.points[0].cpu().numpy()
 
+    def lidar_callback(self, cloud):
+
+        rospy.loginfo("Received Point Cloud")
+        
+        if (PAUSE_SIM):
+            pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
+
+        # convert PointCloud2 message to structured numpy array 
+        labeled_points = pc2.pointcloud2_to_array(cloud) 
+
+        # convert numpy array to Nx3 sized numpy array of float32
+        xyz_points= pc2.get_xyz_points(labeled_points)
+
+        # obtain 1xN numpy array of predictions and Nx3 numpy array of sampled points
+        predictions, new_points = self.network_inference(xyz_points)
+
+        # data structure of binary blob output for PointCloud2 data type
+        output_dtype = np.dtype({'names':['x','y','z','intensity','ring'], 'formats':['<f4','<f4','<f4','<f4','<u2'],'offsets':[0,4,8,16,20], 'itemsize':32})
+
+        # fill structured numpy array with points and classes (in the intensity field). Fill ring with zeros to maintain Pointcloud2 structure
+        new_points = np.c_[new_points, predictions, np.zeros(len(predictions))]
+
+        new_points = np.core.records.fromarrays(new_points.transpose(), output_dtype)
+        
+        # convert to Pointcloud2 message and publish 
+        msg = pc2.array_to_pointcloud2(new_points, rospy.Time.now(), cloud.header.frame_id)
+        
+        self.pub.publish(msg)
+        
+        rospy.loginfo("Sent Pointcloud")
+
+        if (PAUSE_SIM):
+            unpause = rospy.ServiceProxy('/gazebo/unpause_physics', Empty)
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 #
@@ -607,8 +653,10 @@ if __name__ == '__main__':
     # Init #
     ########
 
+    
     chosen_log = 'results/Log_2020-08-14_10-02-36'
 
+    '''
     # Get a list of frames to test
     day = '2020-07-14-17-56-37'
     frames_folder = '../../Myhal_Simulation/simulated_runs/{:s}/classified_frames'.format(day)
@@ -620,14 +668,16 @@ if __name__ == '__main__':
     ordering = np.argsort(f_times)
     f_names = f_names[ordering]
     f_times = f_times[ordering]
+    '''
 
     # Online tester
-    tester = OnlineTester(0, 0, chosen_log)
+    tester = OnlineTester("/velodyne_points", "/classified_points", chosen_log)
 
     #########
     # Start #
     #########
 
+    '''
     saving_folder = '../../Myhal_Simulation/predicted_frames/{:s}'.format(day)
 
     if not exists(saving_folder):
@@ -646,6 +696,6 @@ if __name__ == '__main__':
                   [new_points, predictions],
                   ['x', 'y', 'z', 'pred'])
 
-
+    '''
 
 

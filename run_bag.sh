@@ -1,10 +1,10 @@
 #!/bin/bash
 
-killall roscore
-killall rosmaster
-killall gzclient
-killall gzserver
-killall rviz
+pkill roscore
+pkill rosmaster
+pkill gzclient
+pkill gzserver
+pkill rviz
 
 LOADWORLD=""
 RATE=1
@@ -27,4 +27,4 @@ until rostopic list; do sleep 0.5; done #wait until rosmaster has started
 rosparam set use_sim_time true
 
 rosbag play -l -q -r $RATE $BAGPATH &
-roslaunch dummy_classifier classifier.launch
+roslaunch classifier classifier.launch
