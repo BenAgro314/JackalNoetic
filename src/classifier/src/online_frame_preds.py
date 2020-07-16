@@ -249,7 +249,7 @@ class OnlineData:
         self.ignored_labels = np.sort([0])
 
         # Load neighb_limits dictionary
-        neighb_lim_file = '../../Data/MyhalSim/neighbors_limits.pkl'
+        neighb_lim_file = '/home/bag/Data/MyhalSim/neighbors_limits.pkl'
         if exists(neighb_lim_file):
             with open(neighb_lim_file, 'rb') as file:
                 neighb_lim_dict = pickle.load(file)
@@ -545,10 +545,11 @@ class OnlineTester:
         # Init ROS #
         ############
 
+        rospy.init_node('online_frame_preds', anonymous=True)
         self.pub = rospy.Publisher(out_topic, PointCloud2, queue_size=10)
-        rospy.init_node('classifier', anonymous=True)
+        
         rospy.Subscriber(in_topic, PointCloud2, self.lidar_callback)
-        # rospy.spin()
+        rospy.spin()
 
     def network_inference(self, points):
         """
@@ -561,16 +562,16 @@ class OnlineTester:
         # Input preparation #
         #####################
 
-        t = [time.time()]
+        # t = [time.time()]
 
         # Create batch from the frame points
         batch = OnlineBatch(points, self.config, self.data_handler)
 
-        t += [time.time()]
+        # t += [time.time()]
 
         # Convert batch to a cuda
         batch.to(self.device)
-        t += [time.time()]
+        # t += [time.time()]
         torch.cuda.synchronize(self.device)
 
         #####################
@@ -580,12 +581,12 @@ class OnlineTester:
         # Forward pass
         outputs = self.net(batch, self.config)
         torch.cuda.synchronize(self.device)
-        t += [time.time()]
+        # t += [time.time()]
 
         # Get probs and labels
         predicted_probs = self.softmax(outputs).cpu().detach().numpy()
         torch.cuda.synchronize(self.device)
-        t += [time.time()]
+        # t += [time.time()]
 
         # Insert false columns for ignored labels
         for l_ind, label_value in enumerate(self.data_handler.label_values):
@@ -594,38 +595,39 @@ class OnlineTester:
 
         # Get predicted labels
         predictions = self.data_handler.label_values[np.argmax(predicted_probs, axis=1)].astype(np.int32)
-        t += [time.time()]
+        # t += [time.time()]
 
-        print('\n************************\n')
-        print('Timings:')
-        i = 0
-        print('Batch ...... {:7.1f} ms'.format(1000*(t[i+1] - t[i])))
-        i += 1
-        print('ToGPU ...... {:7.1f} ms'.format(1000*(t[i+1] - t[i])))
-        i += 1
-        print('Forward .... {:7.1f} ms'.format(1000*(t[i+1] - t[i])))
-        i += 1
-        print('Softmax .... {:7.1f} ms'.format(1000*(t[i+1] - t[i])))
-        i += 1
-        print('Preds ...... {:7.1f} ms'.format(1000*(t[i+1] - t[i])))
-        print('-----------------------')
-        print('TOTAL  ..... {:7.1f} ms'.format(1000*(t[-1] - t[0])))
-        print('\n************************\n')
+        # print('\n************************\n')
+        # print('Timings:')
+        # i = 0
+        # print('Batch ...... {:7.1f} ms'.format(1000*(t[i+1] - t[i])))
+        # i += 1
+        # print('ToGPU ...... {:7.1f} ms'.format(1000*(t[i+1] - t[i])))
+        # i += 1
+        # print('Forward .... {:7.1f} ms'.format(1000*(t[i+1] - t[i])))
+        # i += 1
+        # print('Softmax .... {:7.1f} ms'.format(1000*(t[i+1] - t[i])))
+        # i += 1
+        # print('Preds ...... {:7.1f} ms'.format(1000*(t[i+1] - t[i])))
+        # print('-----------------------')
+        # print('TOTAL  ..... {:7.1f} ms'.format(1000*(t[-1] - t[0])))
+        # print('\n************************\n')
 
         return predictions, batch.points[0].cpu().numpy()
 
     def lidar_callback(self, cloud):
-
-        rospy.loginfo("Received Point Cloud")
         
+        #pause the simulation
         if (PAUSE_SIM):
             pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
+
+        rospy.loginfo("Received Point Cloud")
 
         # convert PointCloud2 message to structured numpy array 
         labeled_points = pc2.pointcloud2_to_array(cloud) 
 
         # convert numpy array to Nx3 sized numpy array of float32
-        xyz_points= pc2.get_xyz_points(labeled_points)
+        xyz_points= pc2.get_xyz_points(labeled_points, remove_nans=True, dtype=np.float32)
 
         # obtain 1xN numpy array of predictions and Nx3 numpy array of sampled points
         predictions, new_points = self.network_inference(xyz_points)
@@ -645,6 +647,7 @@ class OnlineTester:
         
         rospy.loginfo("Sent Pointcloud")
 
+        #unpause the simulation
         if (PAUSE_SIM):
             unpause = rospy.ServiceProxy('/gazebo/unpause_physics', Empty)
 
@@ -662,7 +665,7 @@ if __name__ == '__main__':
     ########
 
     
-    chosen_log = 'results/Log_2020-08-14_10-02-36'
+    chosen_log = '/home/bag/Myhal_Simulation/trained_models/Log_2020-08-14_10-02-36'
 
     '''
     # Get a list of frames to test
