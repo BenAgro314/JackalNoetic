@@ -58,6 +58,8 @@ from sensor_msgs.msg import PointCloud2, PointField
 from std_srvs.srv import Empty
 
 PAUSE_SIM = True
+pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
+unpause = rospy.ServiceProxy('/gazebo/unpause_physics', Empty)
 
 # ----------------------------------------------------------------------------------------------------------------------
 #
@@ -619,7 +621,7 @@ class OnlineTester:
         
         #pause the simulation
         if (PAUSE_SIM):
-            pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
+            pause.call()
 
         rospy.loginfo("Received Point Cloud")
 
@@ -641,7 +643,7 @@ class OnlineTester:
         new_points = np.core.records.fromarrays(new_points.transpose(), output_dtype)
         
         # convert to Pointcloud2 message and publish 
-        msg = pc2.array_to_pointcloud2(new_points, rospy.Time.now(), cloud.header.frame_id)
+        msg = pc2.array_to_pointcloud2(new_points, cloud.header.stamp, cloud.header.frame_id)
         
         self.pub.publish(msg)
         
@@ -649,8 +651,7 @@ class OnlineTester:
 
         #unpause the simulation
         if (PAUSE_SIM):
-            unpause = rospy.ServiceProxy('/gazebo/unpause_physics', Empty)
-
+            unpause.call()
 
 # ----------------------------------------------------------------------------------------------------------------------
 #
@@ -660,53 +661,14 @@ class OnlineTester:
 
 if __name__ == '__main__':
 
-    ########
-    # Init #
-    ########
-
-    
     chosen_log = '/home/bag/Myhal_Simulation/trained_models/Log_2020-08-14_10-02-36'
-
-    '''
-    # Get a list of frames to test
-    day = '2020-07-14-17-56-37'
-    frames_folder = '../../Myhal_Simulation/simulated_runs/{:s}/classified_frames'.format(day)
-
-    # Get frame names and timestamps
-    f_names = [f for f in os.listdir(frames_folder) if f[-4:] == '.ply']
-    f_times = np.array([float(f[:-4]) for f in f_names], dtype=np.float64)
-    f_names = np.array([os.path.join(frames_folder, f) for f in f_names])
-    ordering = np.argsort(f_times)
-    f_names = f_names[ordering]
-    f_times = f_times[ordering]
-    '''
-
-    # Online tester
-    tester = OnlineTester("/velodyne_points", "/classified_points", chosen_log)
 
     #########
     # Start #
     #########
 
-    '''
-    saving_folder = '../../Myhal_Simulation/predicted_frames/{:s}'.format(day)
+    tester = OnlineTester("/velodyne_points", "/classified_points", chosen_log)
 
-    if not exists(saving_folder):
-        os.makedirs(saving_folder)
-
-    for f_name in f_names:
-
-        # Load points
-        data = read_ply(f_name)
-        points = np.vstack((data['x'], data['y'], data['z'])).T
-
-        predictions, new_points = tester.network_inference(points)
-
-        new_name = os.path.join(saving_folder, f_name.split('/')[-1])
-        write_ply(new_name,
-                  [new_points, predictions],
-                  ['x', 'y', 'z', 'pred'])
-
-    '''
+    
 
 
