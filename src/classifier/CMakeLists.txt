@@ -17,15 +17,14 @@ find_package(catkin REQUIRED COMPONENTS
 )
 
 catkin_package(
-   INCLUDE_DIRS include
+   INCLUDE_DIRS
    LIBRARIES classifier
    CATKIN_DEPENDS roscpp rospy sensor_msgs std_msgs ros_numpy std_srvs
    DEPENDS system_lib
 )
 
 catkin_install_python(PROGRAMS
-       	src/talker.py
-	    src/classifier.py
+        src/dummy_classifier.py
         src/online_frame_preds.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )

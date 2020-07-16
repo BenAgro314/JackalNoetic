@@ -5,4 +5,4 @@ pkill gzclient
 pkill gzserver
 pkill rviz
 
-roslaunch classifier classifier.launch
+roslaunch classifier dummy_classifier.launch

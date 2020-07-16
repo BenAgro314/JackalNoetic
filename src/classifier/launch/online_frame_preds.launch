@@ -1,0 +1,6 @@
+<launch>
+
+    
+	<node name="online_frame_preds" pkg="classifier" type="online_frame_preds.py" output="screen"/>
+
+</launch>

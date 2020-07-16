@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 #
 #
@@ -22,6 +22,14 @@
 #           Imports and global variables
 #       \**********************************/
 #
+
+#path setup 
+import sys 
+sys.path.insert(0, "/home/bag/catkin_ws/src/ros_numpy")
+sys.path.insert(0, "/home/bag/catkin_ws/src/classifier/src")
+sys.path.insert(0, "/home/bag/catkin_ws/src/classifier/src/utils")
+sys.path.insert(0, "/home/bag/catkin_ws/src/classifier/src/models")
+sys.path.insert(0, "/home/bag/catkin_ws/src/classifier/src/kernels")
 
 # Common libs
 import os

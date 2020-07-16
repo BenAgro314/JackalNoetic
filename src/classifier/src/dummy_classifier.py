@@ -1,4 +1,8 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
+
+import sys
+sys.path.insert(0, "/home/bag/catkin_ws/src/classifier/src")
+sys.path.insert(0, "/home/bag/catkin_ws/src/classifier/src/utils")
 
 import rospy
 import torch
@@ -9,6 +13,8 @@ import numpy as np
 from sensor_msgs.msg import PointCloud2, PointField
 from std_srvs.srv import Empty
 import time 
+
+from utils.config import Config
 
 
 class Classifier:
@@ -93,4 +99,5 @@ class Classifier:
         
 
 if __name__ == '__main__':
+   
     L = Classifier("/velodyne_points", "/classified_points")
