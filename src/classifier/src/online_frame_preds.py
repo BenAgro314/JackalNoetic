@@ -49,6 +49,7 @@ from kernels.kernel_points import create_3D_rotations
 import cpp_wrappers.cpp_subsampling.grid_subsampling as cpp_subsampling
 import cpp_wrappers.cpp_neighbors.radius_neighbors as cpp_neighbors
 
+
 # ROS
 import rospy
 import ros_numpy
@@ -56,6 +57,10 @@ from ros_numpy import point_cloud2 as pc2
 from sensor_msgs.msg import PointCloud2, PointField
 # for pausing gazebo during computation:
 from std_srvs.srv import Empty
+
+from sensor_msgs.msg import LaserScan
+
+
 
 PAUSE_SIM = True
 pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
@@ -548,8 +553,33 @@ class OnlineTester:
         ############
 
         rospy.init_node('online_frame_preds', anonymous=True)
-        self.pub = rospy.Publisher(out_topic, PointCloud2, queue_size=10)
+        # obtaining/defining the parameters for the output of the laserscan data
+        self.gmapping_status = rospy.get_param('gmapping_status')
         
+        self.template_scan = LaserScan()
+
+        
+        self.template_scan.angle_max = np.pi
+        self.template_scan.angle_min = -np.pi
+        self.template_scan.angle_increment = 0.01
+        self.template_scan.time_increment = 0.0
+        self.template_scan.scan_time = 0.01
+        self.template_scan.range_min = 0.0
+        self.template_scan.range_max = 30.0
+        self.min_height = 0.01
+        self.max_height = 1
+        self.ranges_size = int(np.ceil((self.template_scan.angle_max - self.template_scan.angle_min)/self.template_scan.angle_increment))
+
+        #self.pub = rospy.Publisher('/classified_points', PointCloud2, queue_size = 10)
+
+        # scan for local planner (the first element of the tuple denotes the classes alloted to that scan)
+        self.pub_list = [([0,1,2,3,4], rospy.Publisher('/local_planner_points2', LaserScan, queue_size = 10))] 
+        if (self.gmapping_status):
+            self.pub_list.append(([0,2,3], rospy.Publisher('/gmapping_points2', LaserScan, queue_size = 10))) # scan for gmapping 
+        else:
+            self.pub_list.append(([2], rospy.Publisher('/amcl_points', LaserScan, queue_size = 10))) # scan for amcl localization 
+            self.pub_list.append(([0,2,3], rospy.Publisher('/global_planner_points', LaserScan, queue_size = 10))) # scan for global planner
+
         rospy.Subscriber(in_topic, PointCloud2, self.lidar_callback)
         rospy.spin()
 
@@ -633,25 +663,75 @@ class OnlineTester:
 
         # obtain 1xN numpy array of predictions and Nx3 numpy array of sampled points
         predictions, new_points = self.network_inference(xyz_points)
+        self.publish_as_laserscan(new_points, predictions, cloud)
 
         # data structure of binary blob output for PointCloud2 data type
-        output_dtype = np.dtype({'names':['x','y','z','intensity','ring'], 'formats':['<f4','<f4','<f4','<f4','<u2'],'offsets':[0,4,8,16,20], 'itemsize':32})
+
+        #output_dtype = np.dtype({'names':['x','y','z','intensity','ring'], 'formats':['<f4','<f4','<f4','<f4','<u2'],'offsets':[0,4,8,16,20], 'itemsize':32})
 
         # fill structured numpy array with points and classes (in the intensity field). Fill ring with zeros to maintain Pointcloud2 structure
-        new_points = np.c_[new_points, predictions, np.zeros(len(predictions))]
+        #new_points = np.c_[new_points, predictions, np.zeros(len(predictions))]
 
-        new_points = np.core.records.fromarrays(new_points.transpose(), output_dtype)
-        
+        #new_points = np.core.records.fromarrays(new_points.transpose(), output_dtype)
+
+         
         # convert to Pointcloud2 message and publish 
-        msg = pc2.array_to_pointcloud2(new_points, cloud.header.stamp, cloud.header.frame_id)
+        #msg = pc2.array_to_pointcloud2(new_points, cloud.header.stamp, cloud.header.frame_id)
         
-        self.pub.publish(msg)
+        #self.pub.publish(msg)
         
         rospy.loginfo("Sent Pointcloud")
 
         #unpause the simulation
         if (PAUSE_SIM):
             unpause.call()
+
+    def publish_as_laserscan(self, cloud_arr, predictions, original_msg):
+        outputs = [] # stores the laser scan output messages (depending on the filtering we are using), where the index in outputs corrisponds to the publisher at self.pub_list[i][1]
+        for k in self.pub_list:
+            scan = self.template_scan
+            scan.ranges = self.ranges_size * [np.inf]
+            scan.header = original_msg.header
+            scan.header.frame_id = "base_link"
+            outputs.append(self.template_scan)
+        
+        i = 0
+        for xyz in cloud_arr:
+            x = xyz[0]
+            y = xyz[1]
+            z = xyz[2]
+            cat = predictions[i]
+
+            if (np.isnan(x) or np.isnan(y) or np.isnan(z)):
+                continue
+
+            if (z < self.min_height or z > self.max_height):
+                continue 
+
+            r = np.hypot(x,y)
+
+            if (r > self.template_scan.range_max or r < self.template_scan.range_min):
+                continue 
+
+            angle = np.arctan2(y,x)
+
+            if (angle > self.template_scan.angle_max or angle < self.template_scan.angle_min):
+                continue
+
+            index = int((angle-self.template_scan.angle_min)/self.template_scan.angle_increment)
+
+            for j in range(len(outputs)):
+                if (cat not in self.pub_list[j][0]):
+                    continue 
+                if (r < outputs[j].ranges[index]):
+                    outputs[j].ranges[index] = r
+
+
+            i+=1
+        
+        for j in range(len(outputs)):
+           self.pub_list[j][1].publish(outputs[j])
+
 
 # ----------------------------------------------------------------------------------------------------------------------
 #
