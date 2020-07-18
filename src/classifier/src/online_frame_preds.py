@@ -65,7 +65,8 @@ from sensor_msgs.msg import LaserScan
 PAUSE_SIM = True
 pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
 unpause = rospy.ServiceProxy('/gazebo/unpause_physics', Empty)
-
+PUBLISH_POINTCLOUD = True
+PUBLISH_LASERSCAN = False
 # ----------------------------------------------------------------------------------------------------------------------
 #
 #           Utility functions
@@ -569,16 +570,21 @@ class OnlineTester:
         self.min_height = 0.01
         self.max_height = 1
         self.ranges_size = int(np.ceil((self.template_scan.angle_max - self.template_scan.angle_min)/self.template_scan.angle_increment))
-
-        #self.pub = rospy.Publisher('/classified_points', PointCloud2, queue_size = 10)
-
-        # scan for local planner (the first element of the tuple denotes the classes alloted to that scan)
-        self.pub_list = [([0,1,2,3,4], rospy.Publisher('/local_planner_points2', LaserScan, queue_size = 10))] 
-        if (self.gmapping_status):
-            self.pub_list.append(([0,2,3], rospy.Publisher('/gmapping_points2', LaserScan, queue_size = 10))) # scan for gmapping 
-        else:
-            self.pub_list.append(([2], rospy.Publisher('/amcl_points', LaserScan, queue_size = 10))) # scan for amcl localization 
-            self.pub_list.append(([0,2,3], rospy.Publisher('/global_planner_points', LaserScan, queue_size = 10))) # scan for global planner
+        
+        self.pub_funcs = []
+        
+        if (PUBLISH_POINTCLOUD):
+            self.pub = rospy.Publisher('/classified_points', PointCloud2, queue_size = 10)
+            self.pub_funcs.append(self.publish_as_pointcloud)
+        if (PUBLISH_LASERSCAN):
+            # scan for local planner (the first element of the tuple denotes the classes alloted to that scan)
+            self.pub_list = [([0,1,2,3,4], rospy.Publisher('/local_planner_points2', LaserScan, queue_size = 10))] 
+            self.pub_funcs.append(self.publish_as_laserscan)
+            if (self.gmapping_status):
+                self.pub_list.append(([0,2,3], rospy.Publisher('/gmapping_points2', LaserScan, queue_size = 10))) # scan for gmapping 
+            else:
+                self.pub_list.append(([2], rospy.Publisher('/amcl_points', LaserScan, queue_size = 10))) # scan for amcl localization 
+                self.pub_list.append(([0,2,3], rospy.Publisher('/global_planner_points', LaserScan, queue_size = 10))) # scan for global planner
 
         rospy.Subscriber(in_topic, PointCloud2, self.lidar_callback)
         rospy.spin()
@@ -652,8 +658,9 @@ class OnlineTester:
         #pause the simulation
         if (PAUSE_SIM):
             pause.call()
-
         rospy.loginfo("Received Point Cloud")
+        
+        t1 = time.time()
 
         # convert PointCloud2 message to structured numpy array 
         labeled_points = pc2.pointcloud2_to_array(cloud) 
@@ -663,23 +670,11 @@ class OnlineTester:
 
         # obtain 1xN numpy array of predictions and Nx3 numpy array of sampled points
         predictions, new_points = self.network_inference(xyz_points)
-        self.publish_as_laserscan(new_points, predictions, cloud)
 
-        # data structure of binary blob output for PointCloud2 data type
-
-        #output_dtype = np.dtype({'names':['x','y','z','intensity','ring'], 'formats':['<f4','<f4','<f4','<f4','<u2'],'offsets':[0,4,8,16,20], 'itemsize':32})
-
-        # fill structured numpy array with points and classes (in the intensity field). Fill ring with zeros to maintain Pointcloud2 structure
-        #new_points = np.c_[new_points, predictions, np.zeros(len(predictions))]
-
-        #new_points = np.core.records.fromarrays(new_points.transpose(), output_dtype)
-
-         
-        # convert to Pointcloud2 message and publish 
-        #msg = pc2.array_to_pointcloud2(new_points, cloud.header.stamp, cloud.header.frame_id)
-        
-        #self.pub.publish(msg)
-        
+        for func in self.pub_funcs:
+            func(new_points, predictions, cloud)
+        t2 = time.time()
+        print("Computation time: {:.1f}s\n".format(t2-t1))
         rospy.loginfo("Sent Pointcloud")
 
         #unpause the simulation
@@ -693,7 +688,7 @@ class OnlineTester:
             scan.ranges = self.ranges_size * [np.inf]
             scan.header = original_msg.header
             scan.header.frame_id = "base_link"
-            outputs.append(self.template_scan)
+            outputs.append(scan)
         
         i = 0
         for xyz in cloud_arr:
@@ -701,6 +696,7 @@ class OnlineTester:
             y = xyz[1]
             z = xyz[2]
             cat = predictions[i]
+            i+=1
 
             if (np.isnan(x) or np.isnan(y) or np.isnan(z)):
                 continue
@@ -721,17 +717,31 @@ class OnlineTester:
             index = int((angle-self.template_scan.angle_min)/self.template_scan.angle_increment)
 
             for j in range(len(outputs)):
-                if (cat not in self.pub_list[j][0]):
-                    continue 
-                if (r < outputs[j].ranges[index]):
+                if ((cat in self.pub_list[j][0]) and r < outputs[j].ranges[index]):
                     outputs[j].ranges[index] = r
 
 
-            i+=1
         
         for j in range(len(outputs)):
            self.pub_list[j][1].publish(outputs[j])
+    
 
+    def publish_as_pointcloud(self, new_points, predictions, cloud):
+        # data structure of binary blob output for PointCloud2 data type
+
+        output_dtype = np.dtype({'names':['x','y','z','intensity','ring'], 'formats':['<f4','<f4','<f4','<f4','<u2'],'offsets':[0,4,8,16,20], 'itemsize':32})
+
+        # fill structured numpy array with points and classes (in the intensity field). Fill ring with zeros to maintain Pointcloud2 structure
+        new_points = np.c_[new_points, predictions, np.zeros(len(predictions))]
+
+        new_points = np.core.records.fromarrays(new_points.transpose(), output_dtype)
+
+         
+        # convert to Pointcloud2 message and publish 
+        msg = pc2.array_to_pointcloud2(new_points, cloud.header.stamp, cloud.header.frame_id)
+        
+        self.pub.publish(msg)
+ 
 
 # ----------------------------------------------------------------------------------------------------------------------
 #
