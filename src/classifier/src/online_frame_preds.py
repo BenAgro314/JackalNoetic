@@ -681,50 +681,102 @@ class OnlineTester:
         if (PAUSE_SIM):
             unpause.call()
 
-    def publish_as_laserscan(self, cloud_arr, predictions, original_msg):
-        outputs = [] # stores the laser scan output messages (depending on the filtering we are using), where the index in outputs corrisponds to the publisher at self.pub_list[i][1]
+    def publish_as_laserscan_old(self, cloud_arr, predictions, original_msg):
+
+        # stores the laser scan output messages (depending on the filtering we are using),
+        # where the index in outputs corrisponds to the publisher at self.pub_list[i][1]
+
+        outputs = []
         for k in self.pub_list:
             scan = self.template_scan
             scan.ranges = self.ranges_size * [np.inf]
             scan.header = original_msg.header
             scan.header.frame_id = "base_link"
             outputs.append(scan)
-        
+
         i = 0
         for xyz in cloud_arr:
             x = xyz[0]
             y = xyz[1]
             z = xyz[2]
             cat = predictions[i]
-            i+=1
+            i += 1
 
             if (np.isnan(x) or np.isnan(y) or np.isnan(z)):
                 continue
 
             if (z < self.min_height or z > self.max_height):
-                continue 
+                continue
 
-            r = np.hypot(x,y)
+            r = np.hypot(x, y)
 
             if (r > self.template_scan.range_max or r < self.template_scan.range_min):
-                continue 
+                continue
 
-            angle = np.arctan2(y,x)
+            angle = np.arctan2(y, x)
 
             if (angle > self.template_scan.angle_max or angle < self.template_scan.angle_min):
                 continue
 
-            index = int((angle-self.template_scan.angle_min)/self.template_scan.angle_increment)
+            index = int((angle - self.template_scan.angle_min) / self.template_scan.angle_increment)
 
             for j in range(len(outputs)):
                 if ((cat in self.pub_list[j][0]) and r < outputs[j].ranges[index]):
                     outputs[j].ranges[index] = r
 
-
-        
         for j in range(len(outputs)):
-           self.pub_list[j][1].publish(outputs[j])
-    
+            self.pub_list[j][1].publish(outputs[j])
+
+    def publish_as_laserscan(self, cloud_arr, predictions, original_msg):
+
+        # stores the laser scan output messages (depending on the filtering we are using), where the index in outputs
+        # corresponds to the publisher at self.pub_list[i][1]
+        outputs = []
+        for k in self.pub_list:
+            scan = self.template_scan
+            scan.ranges = self.ranges_size * [np.inf]
+            scan.header = original_msg.header
+            scan.header.frame_id = "base_link"
+            outputs.append(scan)
+
+        # Here we assume cloud_arr is a numpy array of shape (N, 3)
+
+        # First remove any NaN value form the array
+        valid_mask = np.logical_not(np.any(np.isnan(cloud_arr), axis=1))
+        cloud_arr = cloud_arr[valid_mask, :]
+        predictions = predictions[valid_mask]
+
+        # Compute 2d polar coordinate
+        r_arr = np.sqrt(np.sum(cloud_arr[:, :2] ** 2, axis=1))
+        angle_arr = np.arctan2(cloud_arr[:, 1], cloud_arr[:, 0])
+
+        # Then remove points according to height/range/angle limits
+        valid_mask = cloud_arr[:, 2] > self.min_height
+        valid_mask = np.logical_and(valid_mask, cloud_arr[:, 2] < self.max_height)
+        valid_mask = np.logical_and(valid_mask, r2_arr > self.template_scan.range_min ** 2)
+        valid_mask = np.logical_and(valid_mask, r2_arr < self.template_scan.range_max ** 2)
+        valid_mask = np.logical_and(valid_mask, angle_arr > self.template_scan.angle_min)
+        valid_mask = np.logical_and(valid_mask, angle_arr <= self.template_scan.angle_max)
+        angle_arr = angle_arr[valid_mask]
+        r_arr = r_arr[valid_mask]
+        predictions = predictions[valid_mask]
+
+        # Compute angle index for all remaining points
+        indexes = np.floor(((angle_arr - self.template_scan.angle_min) / self.template_scan.angle_increment))
+        indexes = indexes.astype(np.int32)
+
+        # Loop over outputs
+        for j in range(len(outputs)):
+
+            # Mask of the points of the category we need
+            prediction_mask = predictions == self.pub_list[j][0]
+
+            # Update ranges only with points of the right category
+            outputs[j].ranges[indexes[prediction_mask]] = r_arr[prediction_mask]
+
+            # Publish output
+            self.pub_list[j][1].publish(outputs[j])
+
 
     def publish_as_pointcloud(self, new_points, predictions, cloud):
         # data structure of binary blob output for PointCloud2 data type
