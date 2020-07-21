@@ -504,13 +504,14 @@ class OnlineTester:
         ####################
 
         # Set which gpu is going to be used
+        on_gpu = True
         GPU_ID = '0'
 
         # Set GPU visible device
         os.environ['CUDA_VISIBLE_DEVICES'] = GPU_ID
 
         # Get the GPU for PyTorch
-        if torch.cuda.is_available():
+        if on_gpu and torch.cuda.is_available():
             self.device = torch.device("cuda:0")
         else:
             self.device = torch.device("cpu")
@@ -539,8 +540,10 @@ class OnlineTester:
         self.softmax = torch.nn.Softmax(1)
 
         # Load the pretrained weigths
-        checkpoint = torch.load(chkp_path)
-        #checkpoint = torch.load(chkp_path, map_location={'cuda:0': 'cpu'})
+        if on_gpu and torch.cuda.is_available():
+            checkpoint = torch.load(chkp_path)
+        else:
+            checkpoint = torch.load(chkp_path, map_location={'cuda:0': 'cpu'})
         self.net.load_state_dict(checkpoint['model_state_dict'])
 
         # Switch network from training to evaluation mode
