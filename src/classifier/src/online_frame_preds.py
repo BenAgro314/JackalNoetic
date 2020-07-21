@@ -53,20 +53,13 @@ import cpp_wrappers.cpp_neighbors.radius_neighbors as cpp_neighbors
 # ROS
 import rospy
 import ros_numpy
+import rosgraph
 from ros_numpy import point_cloud2 as pc2
 from sensor_msgs.msg import PointCloud2, PointField
 # for pausing gazebo during computation:
 from std_srvs.srv import Empty
-
 from sensor_msgs.msg import LaserScan
 
-
-
-PAUSE_SIM = True
-pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
-unpause = rospy.ServiceProxy('/gazebo/unpause_physics', Empty)
-PUBLISH_POINTCLOUD = True
-PUBLISH_LASERSCAN = False
 # ----------------------------------------------------------------------------------------------------------------------
 #
 #           Utility functions
@@ -558,11 +551,13 @@ class OnlineTester:
 
         rospy.init_node('online_frame_preds', anonymous=True)
         # obtaining/defining the parameters for the output of the laserscan data
-        self.gmapping_status = rospy.get_param('gmapping_status')
+        try:
+            self.gmapping_status = rospy.get_param('gmapping_status')
+        except KeyError:
+            self.gmapping_status = True
         
         self.template_scan = LaserScan()
 
-        
         self.template_scan.angle_max = np.pi
         self.template_scan.angle_min = -np.pi
         self.template_scan.angle_increment = 0.01
@@ -586,8 +581,8 @@ class OnlineTester:
             if (self.gmapping_status):
                 self.pub_list.append(([0,2,3], rospy.Publisher('/gmapping_points2', LaserScan, queue_size = 10))) # scan for gmapping 
             else:
-                self.pub_list.append(([2], rospy.Publisher('/amcl_points', LaserScan, queue_size = 10))) # scan for amcl localization 
-                self.pub_list.append(([0,2,3], rospy.Publisher('/global_planner_points', LaserScan, queue_size = 10))) # scan for global planner
+                self.pub_list.append(([2], rospy.Publisher('/amcl_points2', LaserScan, queue_size = 10))) # scan for amcl localization 
+                self.pub_list.append(([0,2,3], rospy.Publisher('/global_planner_points2', LaserScan, queue_size = 10))) # scan for global planner
 
         rospy.Subscriber(in_topic, PointCloud2, self.lidar_callback)
         rospy.spin()
@@ -677,60 +672,15 @@ class OnlineTester:
         for func in self.pub_funcs:
             func(new_points, predictions, cloud)
         t2 = time.time()
-        print("Computation time: {:.1f}s\n".format(t2-t1))
+        print("Computation time: {:.3f}s\n".format(t2-t1))
         rospy.loginfo("Sent Pointcloud")
 
         #unpause the simulation
         if (PAUSE_SIM):
             unpause.call()
 
-    def publish_as_laserscan_old(self, cloud_arr, predictions, original_msg):
-
-        # stores the laser scan output messages (depending on the filtering we are using),
-        # where the index in outputs corrisponds to the publisher at self.pub_list[i][1]
-
-        outputs = []
-        for k in self.pub_list:
-            scan = self.template_scan
-            scan.ranges = self.ranges_size * [np.inf]
-            scan.header = original_msg.header
-            scan.header.frame_id = "base_link"
-            outputs.append(scan)
-
-        i = 0
-        for xyz in cloud_arr:
-            x = xyz[0]
-            y = xyz[1]
-            z = xyz[2]
-            cat = predictions[i]
-            i += 1
-
-            if (np.isnan(x) or np.isnan(y) or np.isnan(z)):
-                continue
-
-            if (z < self.min_height or z > self.max_height):
-                continue
-
-            r = np.hypot(x, y)
-
-            if (r > self.template_scan.range_max or r < self.template_scan.range_min):
-                continue
-
-            angle = np.arctan2(y, x)
-
-            if (angle > self.template_scan.angle_max or angle < self.template_scan.angle_min):
-                continue
-
-            index = int((angle - self.template_scan.angle_min) / self.template_scan.angle_increment)
-
-            for j in range(len(outputs)):
-                if ((cat in self.pub_list[j][0]) and r < outputs[j].ranges[index]):
-                    outputs[j].ranges[index] = r
-
-        for j in range(len(outputs)):
-            self.pub_list[j][1].publish(outputs[j])
-
     def publish_as_laserscan(self, cloud_arr, predictions, original_msg):
+        t1 = time.time()
 
         # stores the laser scan output messages (depending on the filtering we are using), where the index in outputs
         # corresponds to the publisher at self.pub_list[i][1]
@@ -756,8 +706,8 @@ class OnlineTester:
         # Then remove points according to height/range/angle limits
         valid_mask = cloud_arr[:, 2] > self.min_height
         valid_mask = np.logical_and(valid_mask, cloud_arr[:, 2] < self.max_height)
-        valid_mask = np.logical_and(valid_mask, r2_arr > self.template_scan.range_min ** 2)
-        valid_mask = np.logical_and(valid_mask, r2_arr < self.template_scan.range_max ** 2)
+        valid_mask = np.logical_and(valid_mask, r_arr > self.template_scan.range_min ** 2)
+        valid_mask = np.logical_and(valid_mask, r_arr < self.template_scan.range_max ** 2)
         valid_mask = np.logical_and(valid_mask, angle_arr > self.template_scan.angle_min)
         valid_mask = np.logical_and(valid_mask, angle_arr <= self.template_scan.angle_max)
         angle_arr = angle_arr[valid_mask]
@@ -772,14 +722,17 @@ class OnlineTester:
         for j in range(len(outputs)):
 
             # Mask of the points of the category we need
-            prediction_mask = predictions == self.pub_list[j][0]
+            prediction_mask = np.isin(predictions,self.pub_list[j][0])
 
             # Update ranges only with points of the right category
-            outputs[j].ranges[indexes[prediction_mask]] = r_arr[prediction_mask]
+            np_ranges = np.array(outputs[j].ranges)
+            np_ranges[indexes[prediction_mask]] = r_arr[prediction_mask]
+            outputs[j].ranges = list(np_ranges)
 
             # Publish output
             self.pub_list[j][1].publish(outputs[j])
 
+        print("publish as laserscan time: {:.7f}s".format(time.time() - t1))
 
     def publish_as_pointcloud(self, new_points, predictions, cloud):
         # data structure of binary blob output for PointCloud2 data type
@@ -807,6 +760,19 @@ class OnlineTester:
 if __name__ == '__main__':
 
     chosen_log = '/home/bag/Myhal_Simulation/trained_models/Log_2020-08-14_10-02-36'
+
+    # setup testing parameters
+
+    try: # ensure that the service is available
+        rosgraph.Master.lookupService('/gazebo/pause_physics')
+        PAUSE_SIM = True # modify this if we want to pause the simulation during computation
+        pause = rospy.ServiceProxy('/gazebo/pause_physics', Empty)
+        unpause = rospy.ServiceProxy('/gazebo/unpause_physics', Empty)
+    except:
+        PAUSE_SIM = False
+
+    PUBLISH_POINTCLOUD = False
+    PUBLISH_LASERSCAN = True
 
     #########
     # Start #
