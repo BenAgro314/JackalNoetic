@@ -568,9 +568,9 @@ class OnlineTester:
         self.min_height = 0.01
         self.max_height = 1
         self.ranges_size = int(np.ceil((self.template_scan.angle_max - self.template_scan.angle_min)/self.template_scan.angle_increment))
-        
+                                                                                    
         self.pub_funcs = []
-        
+                                                                                             
         if (PUBLISH_POINTCLOUD):
             self.pub = rospy.Publisher('/classified_points', PointCloud2, queue_size = 10)
             self.pub_funcs.append(self.publish_as_pointcloud)
@@ -771,8 +771,8 @@ if __name__ == '__main__':
     except:
         PAUSE_SIM = False
 
-    PUBLISH_POINTCLOUD = False
-    PUBLISH_LASERSCAN = True
+    PUBLISH_POINTCLOUD = True
+    PUBLISH_LASERSCAN = False
 
     #########
     # Start #
